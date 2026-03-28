@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MOH COFFEE | Command Center Pro V2</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1DB954">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+Ethiopic:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        :root { 
+            --spotify-green: #1DB954; 
+            --card-bg: rgba(20, 20, 20, 0.4); 
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+        
+        body { 
+            font-family: 'Inter', 'Noto Sans Ethiopic', sans-serif; 
+            color: #fff; background-color: #000;
+            margin: 0; padding: 0; min-height: 100vh; overflow-x: hidden;
+        }
+
+        .video-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: -1; filter: brightness(0.2) contrast(1.2); }
+
+        #app-container { min-height: 100vh; padding: 20px; transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1); margin: 0 auto; }
+        .glass-panel { background: var(--card-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 24px; }
+
+        @keyframes slideUpFade { 0% { opacity: 0; transform: translateY(30px) scale(0.95); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+        .order-card { background: rgba(24, 24, 24, 0.8); border-radius: 20px; padding: 20px; border: 1px solid var(--glass-border); transition: all 0.3s; animation: slideUpFade 0.6s forwards; }
+        .order-card:hover { border-color: var(--spotify-green); transform: translateY(-5px); box-shadow: 0 10px 30px rgba(29, 185, 84, 0.1); }
+
+        .map-frame { height: 150px; width: 100%; border-radius: 16px; margin: 12px 0; border: 1px solid rgba(255,255,255,0.05); }
+
+        .control-bar { background: rgba(0,0,0,0.5); backdrop-filter: blur(20px); border-bottom: 1px solid var(--glass-border); position: sticky; top: 0; z-index: 50; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .action-btn { background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 99px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 8px; }
+
+        .tab-btn { padding: 10px 20px; font-size: 11px; font-weight: 900; text-transform: uppercase; border-radius: 99px; cursor: pointer; transition: 0.3s; white-space: nowrap; }
+        .tab-active { background: var(--spotify-green); color: black; box-shadow: 0 0 15px rgba(29, 185, 84, 0.4); }
+
+        .payment-preview { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; border: 2px solid var(--glass-border); cursor: pointer; transition: 0.3s; }
+        
+        #payment-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 200; backdrop-filter: blur(10px); display: none; align-items: center; justify-content: center; }
+        
+        input, select, textarea { background: rgba(0,0,0,0.5) !important; border: 1px solid var(--glass-border) !important; border-radius: 12px !important; padding: 12px !important; color: white !important; }
+
+        .vehicle-btn { background: linear-gradient(145deg, rgba(30,30,30,1) 0%, rgba(15,15,15,1) 100%); border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s ease; }
+        .vehicle-btn:hover { border-color: var(--spotify-green); }
+
+        /* Intro Animation */
+        #intro-anim { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 1s ease; }
+        .intro-text { font-size: 3rem; font-weight: 900; color: #1DB954; text-transform: uppercase; letter-spacing: 2px; animation: pop 1s ease-out forwards; }
+        @keyframes pop { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="intro-anim">
+        <i class="fas fa-shield-halved text-6xl text-[#1DB954] mb-4"></i>
+        <div class="intro-text" id="introMessage">Hi MOH</div>
+        <p class="text-white mt-2 font-black tracking-widest text-xs uppercase">Initializing Control Center...</p>
+    </div>
+
+    <video autoplay loop muted playsinline class="video-bg">
+        <source src="background-video.mp4" type="video/mp4">
+    </video>
+
+    <div id="payment-modal" onclick="this.style.display='none'">
+        <div class="relative max-w-[90%] max-h-[90%] flex flex-col items-center">
+            <img id="modal-img" src="" class="max-h-[70vh] rounded-3xl shadow-2xl border-4 border-[#1DB954] transition-transform scale-95">
+            <p class="text-center mt-6 font-black uppercase tracking-widest text-white bg-black/50 px-6 py-2 rounded-full border border-white/10"><i class="fa-solid fa-xmark mr-2 text-[#1DB954]"></i> Close Receipt</p>
+        </div>
+    </div>
+
+    <div class="control-bar">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-wifi text-xs text-[#1DB954]"></i>
+            <span id="clock" class="text-xs font-bold font-mono">00:00:00</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="toggleLanguage()" class="action-btn bg-white text-black"><i class="fa-solid fa-language"></i> <span id="lang-label">EN/አማ</span></button>
+        </div>
+    </div>
+
+    <div id="app-container" class="max-w-6xl">
+        <header class="py-10">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-6">
+                <div class="text-center md:text-left">
+                    <h1 class="text-4xl md:text-5xl font-900 tracking-tighter italic tr-welcome">MOH CONTROL CENTER</h1>
+                    <p class="text-gray-400 text-[10px] uppercase font-bold tracking-widest mt-2"><span class="text-[#1DB954] animate-pulse">●</span> <span class="tr-system">System Live & Secure</span></p>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="glass-panel p-4 min-w-[120px] text-center border-b-2 border-b-[#1DB954]">
+                        <p class="text-[9px] font-black text-gray-500 uppercase tr-rev">Revenue</p>
+                        <span id="sales" class="text-xl font-black text-[#1DB954]">0</span><span class="text-[10px] ml-1">ETB</span>
+                    </div>
+                    <div class="glass-panel p-4 min-w-[120px] text-center">
+                        <p class="text-[9px] font-black text-gray-500 uppercase tr-ord">Orders</p>
+                        <span id="totalOrders" class="text-xl font-black">0</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <nav class="flex gap-4 mb-8 border-b border-white/10 pb-4 overflow-x-auto">
+            <button onclick="switchTab('orders')" id="btn-orders" class="tab-btn tab-active tr-tab-ord"><i class="fa-solid fa-layer-group mr-2"></i>Orders</button>
+            <button onclick="switchTab('fleet')" id="btn-fleet" class="tab-btn text-gray-400 tr-tab-fleet"><i class="fa-solid fa-truck-fast mr-2"></i>Logistics</button>
+            <button onclick="switchTab('menu')" id="btn-menu" class="tab-btn text-gray-400 tr-tab-menu"><i class="fa-solid fa-tags mr-2"></i>Prices & Academy</button>
+            <button onclick="switchTab('guide')" id="btn-guide" class="tab-btn text-gray-400 tr-tab-guide"><i class="fa-solid fa-circle-info mr-2"></i>Guide</button>
+        </nav>
+
+        <main id="orders-section">
+            <div id="grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-20"></div>
+        </main>
+
+        <main id="fleet-section" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="glass-panel p-8 h-fit">
+                    <h2 class="text-xl font-black mb-6 uppercase tr-hire">Hire Courier</h2>
+                    <div class="space-y-4">
+                        <input type="text" id="fName" placeholder="Full Name" class="w-full tr-ph-name">
+                        <input type="tel" id="fPhone" placeholder="Phone Number" class="w-full tr-ph-phone">
+                        <select id="fType" class="w-full">
+                            <option value="Bicycle">Bicycle</option>
+                            <option value="Motor">Motorbike</option>
+                        </select>
+                        <div class="p-4 border border-white/10 rounded-xl bg-black/30">
+                            <p class="text-[9px] font-black text-gray-500 mb-2 uppercase tr-photo">Profile Photo</p>
+                            <input type="file" id="fPhoto" accept="image/*" class="text-xs">
+                        </div>
+                        <button onclick="registerCourier()" class="w-full bg-[#1DB954] text-black py-4 rounded-xl font-black uppercase shadow-[0_0_15px_rgba(29,185,84,0.3)] hover:scale-[1.02] transition-transform tr-add-fleet">Add to Fleet</button>
+                    </div>
+                </div>
+                <div class="lg:col-span-2 glass-panel p-8">
+                    <h2 class="text-xl font-black mb-6 uppercase"><span class="tr-active">Active Couriers</span> (<span id="fleetCount">0</span>)</h2>
+                    <div id="fleet-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+            </div>
+        </main>
+
+        <main id="menu-section" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                <div class="glass-panel p-8">
+                    <h2 class="text-xl font-black mb-6 uppercase tr-prices">Menu Prices (Live)</h2>
+                    <div class="space-y-3 mb-6">
+                        <div class="flex items-center justify-between"><label class="text-xs font-bold w-1/2">Black Coffee (Inside)</label><input type="number" id="p-black-in" class="w-1/2"></div>
+                        <div class="flex items-center justify-between"><label class="text-xs font-bold w-1/2">Black Coffee (Away)</label><input type="number" id="p-black-out" class="w-1/2"></div>
+                        <div class="flex items-center justify-between"><label class="text-xs font-bold w-1/2">Macchiato (Small)</label><input type="number" id="p-macc-sm" class="w-1/2"></div>
+                        <div class="flex items-center justify-between"><label class="text-xs font-bold w-1/2">Macchiato (Big)</label><input type="number" id="p-macc-bg" class="w-1/2"></div>
+                        <div class="flex items-center justify-between"><label class="text-xs font-bold w-1/2">Normal Tea</label><input type="number" id="p-tea" class="w-1/2"></div>
+                        <div class="flex items-center justify-between"><label class="text-xs font-bold w-1/2">Halib Tea</label><input type="number" id="p-halib" class="w-1/2"></div>
+                        <div class="flex items-center justify-between border-t border-white/10 pt-3 mt-3"><label class="text-xs font-bold w-1/2 text-spotGreen">Fresh Snacks Price</label><input type="number" id="p-snacks" class="w-1/2"></div>
+                        <div class="flex items-center justify-between"><label class="text-xs font-bold w-1/2 text-spotGreen">Gear Shop Price</label><input type="number" id="p-gear" class="w-1/2"></div>
+                    </div>
+                    
+                    <h3 class="text-sm font-black mb-4 uppercase tr-features">Enable Features</h3>
+                    <div class="flex gap-4 mb-6">
+                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="t-snacks"> Snacks Active</label>
+                        <label class="flex items-center gap-2 text-xs"><input type="checkbox" id="t-gear"> Gear Shop Active</label>
+                    </div>
+
+                    <button onclick="saveSettings()" class="w-full bg-[#1DB954] text-black py-4 rounded-xl font-black uppercase tr-save-settings">Push Live Updates</button>
+                </div>
+
+                <div class="glass-panel p-8">
+                    <h2 class="text-xl font-black mb-6 uppercase tr-academy">Academy Video Links</h2>
+                    <p class="text-xs text-gray-500 mb-4">Paste video URLs (MP4/YouTube) to unlock them in the Customer App.</p>
+                    <div class="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar" id="academy-inputs">
+                        </div>
+                    <button onclick="saveAcademy()" class="w-full bg-white text-black py-4 rounded-xl font-black uppercase mt-6 tr-save-academy">Save Videos</button>
+                </div>
+
+            </div>
+        </main>
+
+        <main id="guide-section" class="hidden">
+            <div class="glass-panel p-8 max-w-3xl mx-auto">
+                <h2 class="text-2xl font-black mb-6 uppercase tr-guide-title">How to Use the Control Center</h2>
+                <div class="space-y-6 text-sm text-gray-300">
+                    <div class="p-4 bg-black/40 rounded-xl border border-orange-500/30">
+                        <h3 class="text-orange-400 font-black uppercase mb-1">1. Pending (Verification)</h3>
+                        <p>When an order arrives, it flashes <span class="text-orange-500 font-bold">orange</span>. Click the image to verify payment. If valid, click "Approve Payment".</p>
+                    </div>
+                    <div class="p-4 bg-black/40 rounded-xl border border-white/10">
+                        <h3 class="text-white font-black uppercase mb-1">2. Assign Logistics</h3>
+                        <p>Once approved, select a Motorcycle or Bicycle to dispatch. You must hire couriers in the "Logistics" tab first.</p>
+                    </div>
+                    <div class="p-4 bg-black/40 rounded-xl border border-blue-400/30">
+                        <h3 class="text-blue-400 font-black uppercase mb-1">3. Dispatched</h3>
+                        <p>The order is now en route. The customer's app will show it's on the way.</p>
+                    </div>
+                    <div class="p-4 bg-black/40 rounded-xl border border-spotGreen/30">
+                        <h3 class="text-spotGreen font-black uppercase mb-1">4. Delivered & Feedback</h3>
+                        <p>If the customer clicks "I Got It" on their app, the order turns <span class="text-spotGreen font-bold">Green</span> here. If they send a message or click "It takes long", the card will alert you.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, onValue, update, remove, push, set } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        // FIREBASE FIXED: Reverted to your fully functional working database settings
+        const firebaseConfig = {
+            apiKey: "AIzaSyDjtvENDE6JD2gntFdTMuljt8ojaLyW_lg",
+            authDomain: "moh-coffe.firebaseapp.com",
+            databaseURL: "https://moh-coffe-default-rtdb.europe-west1.firebasedatabase.app", 
+            projectId: "moh-coffe",
+            appId: "1:257455436275:web:b6af25bbc61803b7a02286"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const MOH_HUB = [8.9865, 38.8340];
+        let globalFleet = {};
+
+        // --- INTRO ANIMATION ---
+        setTimeout(() => {
+            const intro = document.getElementById('intro-anim');
+            intro.style.opacity = '0';
+            setTimeout(() => intro.style.display = 'none', 1000);
+        }, 2000);
+
+        // --- UI ACTIONS ---
+        window.viewPayment = (imgUrl) => {
+            document.getElementById('modal-img').src = imgUrl;
+            document.getElementById('payment-modal').style.display = 'flex';
+        };
+
+        window.switchTab = (t) => {
+            ['orders', 'fleet', 'menu', 'guide'].forEach(tab => {
+                document.getElementById(`${tab}-section`).classList.toggle('hidden', tab !== t);
+                const btn = document.getElementById(`btn-${tab}`);
+                if(tab === t) { btn.classList.add('tab-active'); btn.classList.remove('text-gray-400'); } 
+                else { btn.classList.remove('tab-active'); btn.classList.add('text-gray-400'); }
+            });
+        };
+
+        // --- ACADEMY INPUT BUILDER ---
+        const acInputs = document.getElementById('academy-inputs');
+        for(let i=1; i<=10; i++) {
+            acInputs.innerHTML += `
+                <div class="p-3 bg-black/40 rounded-xl border border-white/5">
+                    <label class="text-[10px] font-black text-spotGreen uppercase mb-1 block">Video ${i}</label>
+                    <input type="text" id="v-title-${i}" placeholder="Video Title" class="w-full mb-2 text-xs">
+                    <input type="text" id="v-url-${i}" placeholder="Video URL (mp4 or link)" class="w-full text-xs">
+                </div>`;
+        }
+
+        // Load Settings (Prices/Academy)
+        onValue(ref(db, 'settings'), (snap) => {
+            const s = snap.val();
+            if(s && s.prices) {
+                document.getElementById('p-black-in').value = s.prices.black_in || 50;
+                document.getElementById('p-black-out').value = s.prices.black_out || 80;
+                document.getElementById('p-macc-sm').value = s.prices.macc_sm || 40;
+                document.getElementById('p-macc-bg').value = s.prices.macc_bg || 140;
+                document.getElementById('p-tea').value = s.prices.tea || 40;
+                document.getElementById('p-halib').value = s.prices.halib || 150;
+                document.getElementById('p-snacks').value = s.prices.snacks || 120;
+                document.getElementById('p-gear').value = s.prices.gear || 5000;
+            }
+            if(s && s.menuFlags) {
+                document.getElementById('t-snacks').checked = s.menuFlags.snacksActive || false;
+                document.getElementById('t-gear').checked = s.menuFlags.gearActive || false;
+            }
+        });
+
+        onValue(ref(db, 'academy_videos'), (snap) => {
+            const vids = snap.val();
+            if(vids) {
+                for(let i=1; i<=10; i++) {
+                    if(vids[`vid_${i}`]) {
+                        document.getElementById(`v-title-${i}`).value = vids[`vid_${i}`].title || "";
+                        document.getElementById(`v-url-${i}`).value = vids[`vid_${i}`].url || "";
+                    }
+                }
+            }
+        });
+
+        window.saveSettings = () => {
+            update(ref(db, 'settings'), {
+                prices: {
+                    black_in: document.getElementById('p-black-in').value,
+                    black_out: document.getElementById('p-black-out').value,
+                    macc_sm: document.getElementById('p-macc-sm').value,
+                    macc_bg: document.getElementById('p-macc-bg').value,
+                    tea: document.getElementById('p-tea').value,
+                    halib: document.getElementById('p-halib').value,
+                    snacks: document.getElementById('p-snacks').value,
+                    gear: document.getElementById('p-gear').value
+                },
+                menuFlags: {
+                    snacksActive: document.getElementById('t-snacks').checked,
+                    gearActive: document.getElementById('t-gear').checked
+                }
+            });
+            update(ref(db, 'prices'), { // for backward compatibility with customer app
+                black_in: document.getElementById('p-black-in').value, black_out: document.getElementById('p-black-out').value,
+                macc_sm: document.getElementById('p-macc-sm').value, macc_bg: document.getElementById('p-macc-bg').value,
+                tea: document.getElementById('p-tea').value, halib: document.getElementById('p-halib').value,
+                snacks: document.getElementById('p-snacks').value, gear: document.getElementById('p-gear').value
+            });
+            alert("Settings Pushed Live!");
+        };
+
+        window.saveAcademy = () => {
+            const vids = {};
+            for(let i=1; i<=10; i++) {
+                vids[`vid_${i}`] = {
+                    title: document.getElementById(`v-title-${i}`).value,
+                    url: document.getElementById(`v-url-${i}`).value
+                };
+            }
+            update(ref(db, 'academy_videos'), vids);
+            alert("Academy Videos Saved!");
+        };
+
+        // --- FLEET MANAGEMENT ---
+        window.registerCourier = () => {
+            const name = document.getElementById('fName').value;
+            const phone = document.getElementById('fPhone').value;
+            const type = document.getElementById('fType').value;
+            const file = document.getElementById('fPhoto').files[0];
+            if(!name || !phone || !file) return alert("Please fill Name, Phone, and Photo");
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                push(ref(db, 'fleet'), { name, phone, type, photo: reader.result });
+                document.getElementById('fName').value = ''; document.getElementById('fPhone').value = '';
+            };
+            reader.readAsDataURL(file);
+        };
+
+        onValue(ref(db, 'fleet'), (s) => {
+            const list = document.getElementById('fleet-list'); list.innerHTML = '';
+            globalFleet = s.val() || {};
+            document.getElementById('fleetCount').innerText = Object.keys(globalFleet).length;
+            Object.keys(globalFleet).forEach(id => {
+                const f = globalFleet[id];
+                list.innerHTML += `
+                    <div class="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
+                        <img src="${f.photo}" class="w-[40px] h-[40px] rounded-xl object-cover">
+                        <div class="flex-1">
+                            <p class="font-black uppercase text-xs">${f.name}</p>
+                            <p class="text-[9px] text-[#1DB954] font-bold">${f.type}</p>
+                        </div>
+                        <button onclick="remove(ref(db, 'fleet/${id}'))" class="text-red-500/30 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
+                    </div>`;
+            });
+        });
+
+        // --- ORDERS & SMART WORKFLOW ---
+        onValue(ref(db, 'orders'), (s) => {
+            const grid = document.getElementById('grid'); grid.innerHTML = '';
+            const data = s.val();
+            let totalRev = 0; let totalOrd = 0;
+            if(!data) return;
+
+            let cardIndex = 0;
+            Object.keys(data).reverse().forEach(id => {
+                const o = data[id];
+                totalOrd++;
+                const currentStatus = o.status || "Pending"; 
+                
+                if(currentStatus === "Paid" || currentStatus === "Dispatched" || currentStatus === "Delivered") totalRev += Number(o.price);
+
+                const mapId = `map-${id}`;
+                const paymentImg = o.receipt || 'https://via.placeholder.com/300x500/1DB954/000000?text=NO+RECEIPT';
+
+                // Badges and Borders
+                let statusBadge = ''; let borderColor = 'border-white/10'; let alertBox = '';
+
+                if(o.isLateAlert) {
+                    borderColor = 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)] animate-pulse';
+                    alertBox = `<div class="bg-red-500 text-black text-[10px] font-black uppercase p-2 mb-2 rounded-lg text-center"><i class="fas fa-triangle-exclamation mr-1"></i> Customer Says: Taking Too Long!</div>`;
+                }
+
+                if(o.customerMessage) {
+                    alertBox += `<div class="bg-blue-500/20 border border-blue-500 text-blue-400 text-[10px] font-bold p-2 mb-2 rounded-lg"><i class="fas fa-message mr-1"></i> "${o.customerMessage}"</div>`;
+                }
+
+                if(currentStatus === "Pending") {
+                    statusBadge = `<span class="text-[9px] font-black px-2 py-1 rounded bg-orange-500/20 text-orange-400 uppercase"><i class="fa-solid fa-clock"></i> Pending</span>`;
+                    if(!o.isLateAlert) borderColor = 'border-orange-500/50';
+                } else if(currentStatus === "Paid") {
+                    statusBadge = `<span class="text-[9px] font-black px-2 py-1 rounded bg-[#1DB954]/20 text-[#1DB954] uppercase"><i class="fa-solid fa-check"></i> Paid</span>`;
+                } else if(currentStatus === "Dispatched") {
+                    statusBadge = `<span class="text-[9px] font-black px-2 py-1 rounded bg-blue-500/20 text-blue-400 uppercase"><i class="fa-solid fa-motorcycle"></i> Dispatched</span>`;
+                } else if(currentStatus === "Delivered") {
+                    statusBadge = `<span class="text-[9px] font-black px-2 py-1 rounded bg-green-500 text-black uppercase"><i class="fa-solid fa-check-double"></i> Delivered</span>`;
+                    borderColor = 'border-spotGreen';
+                }
+
+                // Action Area
+                let actionHTML = '';
+                if (currentStatus === "Pending") {
+                    actionHTML = `<button onclick="approvePayment('${id}')" class="w-full bg-orange-500 text-black py-3 rounded-xl font-black text-xs uppercase shadow-[0_0_15px_rgba(249,115,22,0.4)]">Approve Payment</button>`;
+                } else if (currentStatus === "Paid") {
+                    actionHTML = `
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="dispatchOrder('${id}', 'Bicycle')" class="vehicle-btn flex flex-col items-center justify-center py-3 rounded-xl"><i class="fa-solid fa-person-biking text-2xl text-gray-400 mb-1"></i><span class="text-[9px] font-black uppercase">Bicycle</span></button>
+                            <button onclick="dispatchOrder('${id}', 'Motor')" class="vehicle-btn flex flex-col items-center justify-center py-3 rounded-xl"><i class="fa-solid fa-motorcycle text-2xl text-gray-400 mb-1"></i><span class="text-[9px] font-black uppercase">Motor</span></button>
+                        </div>`;
+                } else if (currentStatus === "Dispatched") {
+                    actionHTML = `
+                        <div class="bg-black/40 border border-white/10 rounded-xl p-2 flex items-center gap-3">
+                            <img src="${o.courier_photo}" class="w-[30px] h-[30px] rounded-lg object-cover">
+                            <div><p class="text-[8px] text-gray-400 uppercase tracking-widest">En Route</p><p class="text-xs font-bold">${o.courier_name}</p></div>
+                        </div>`;
+                } else if (currentStatus === "Delivered") {
+                    actionHTML = `<p class="text-xs text-spotGreen font-black text-center uppercase"><i class="fas fa-thumbs-up mr-2"></i> Customer Received</p>`;
+                }
+
+                grid.innerHTML += `
+                    <div class="order-card border ${borderColor}" style="animation-delay: ${cardIndex * 0.05}s">
+                        ${alertBox}
+                        <div class="flex justify-between items-center mb-3">
+                            ${statusBadge}
+                            <span class="text-[9px] text-gray-500 font-mono">${new Date(o.timestamp || Date.now()).toLocaleTimeString()}</span>
+                        </div>
+                        
+                        <div class="flex justify-between items-start mb-2">
+                            <div><h3 class="text-lg font-black uppercase leading-tight">${o.item}</h3><p class="text-[10px] text-gray-400 font-bold">${o.variant}</p></div>
+                            <div class="text-right"><div class="text-xl font-black text-[#1DB954]">${o.price}</div></div>
+                        </div>
+                        
+                        <div id="${mapId}" class="map-frame"></div>
+                        
+                        <div class="bg-black/40 p-3 rounded-xl mb-4 border border-white/5 flex items-center justify-between">
+                            <div>
+                                <p class="text-[9px] text-gray-500 uppercase font-black"><i class="fa-regular fa-user"></i> ${o.customer}</p>
+                                <p class="text-[9px] text-blue-400 italic"><i class="fa-solid fa-location-dot"></i> ${o.location}</p>
+                                <p class="text-[9px] text-gray-400 mt-1"><i class="fa-solid fa-phone"></i> ${o.phone}</p>
+                            </div>
+                            <div class="text-center flex flex-col items-center">
+                                <img src="${paymentImg}" onclick="viewPayment('${paymentImg}')" class="payment-preview">
+                                <p class="text-[8px] font-black mt-1 uppercase text-gray-400">Proof</p>
+                            </div>
+                        </div>
+
+                        ${actionHTML}
+                        
+                        <button onclick="deleteOrder('${id}')" class="w-full text-red-500/50 hover:text-red-500 text-[9px] font-bold uppercase tracking-widest mt-2 py-2"><i class="fa-solid fa-trash-can mr-1"></i> Archive</button>
+                        ${o.isLateAlert ? `<button onclick="clearAlert('${id}')" class="w-full text-gray-500 text-[9px] font-bold uppercase mt-1 py-1">Clear Alert</button>` : ''}
+                    </div>`;
+                
+                cardIndex++;
+                setTimeout(() => initOrderMap(mapId), 50);
+            });
+            document.getElementById('sales').innerText = totalRev.toLocaleString();
+            document.getElementById('totalOrders').innerText = totalOrd;
+        });
+
+        function initOrderMap(id) {
+            const map = L.map(id, {zoomControl:false, attributionControl:false}).setView(MOH_HUB, 14);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            const dest = [MOH_HUB[0]+(Math.random()-0.5)*0.03, MOH_HUB[1]+(Math.random()-0.5)*0.03];
+            L.marker(MOH_HUB, {icon: L.divIcon({html:'<i class="fa-solid fa-mug-hot text-[#1DB954]"></i>'})}).addTo(map);
+            L.marker(dest, {icon: L.divIcon({html:'<i class="fa-solid fa-location-crosshairs text-blue-400"></i>'})}).addTo(map);
+            L.polyline([MOH_HUB, dest], {color: '#1DB954', weight: 2, opacity: 0.5, dashArray: '4, 8'}).addTo(map);
+            map.fitBounds([MOH_HUB, dest], {padding: [10, 10]});
+        }
+
+        window.approvePayment = (id) => update(ref(db, `orders/${id}`), { status: "Paid" });
+        window.clearAlert = (id) => update(ref(db, `orders/${id}`), { isLateAlert: false });
+        
+        window.dispatchOrder = (id, type) => {
+            const courier = Object.values(globalFleet).find(f => f.type === type);
+            if(!courier) return alert(`No active ${type} couriers in Logistics.`);
+            update(ref(db, `orders/${id}`), { status: "Dispatched", vehicle: type, courier_name: courier.name, courier_photo: courier.photo });
+        };
+
+        window.deleteOrder = (id) => { if(confirm("Archive this order?")) remove(ref(db, `orders/${id}`)); };
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
+
+        // --- TRANSLATION ---
+        let lang = 'en';
+        const tr = {
+            en: {
+                welcome: "MOH CONTROL CENTER", system: "System Live & Secure", rev: "Revenue", ord: "Orders",
+                tabOrd: "Orders", tabFleet: "Logistics", tabMenu: "Prices & Academy", tabGuide: "Guide",
+                hire: "Hire Courier", phName: "Full Name", phPhone: "Phone Number", photo: "Profile Photo", addFleet: "Add to Fleet", active: "Active Couriers",
+                prices: "Menu Prices (Live)", features: "Enable Features", saveSettings: "Push Live Updates",
+                academy: "Academy Video Links", saveAcademy: "Save Videos", guideTitle: "How to Use the Control Center"
+            },
+            am: {
+                welcome: "ሞህ መቆጣጠሪያ ማዕከል", system: "ሲስተሙ ይሰራል", rev: "ገቢ", ord: "ትዕዛዞች",
+                tabOrd: "ትዕዛዞች", tabFleet: "መጓጓዣ", tabMenu: "ዋጋ እና አካዳሚ", tabGuide: "መመሪያ",
+                hire: "አሽከርካሪ ቅጠር", phName: "ሙሉ ስም", phPhone: "ስልክ ቁጥር", photo: "ፎቶ", addFleet: "ወደ መጓጓዣ አክል", active: "አሽከርካሪዎች",
+                prices: "የምናሌ ዋጋ (የቀጥታ)", features: "አገልግሎቶች", saveSettings: "ወደ አፕ ላክ",
+                academy: "የአካዳሚ ቪዲዮ ማስገቢያ", saveAcademy: "ቪዲዮዎችን አስቀምጥ", guideTitle: "አጠቃቀም መመሪያ"
+            }
+        };
+
+        window.toggleLanguage = () => {
+            lang = lang === 'en' ? 'am' : 'en';
+            document.getElementById('lang-label').innerText = lang === 'en' ? 'EN/አማ' : 'አማ/EN';
+            const t = tr[lang];
+            document.querySelector('.tr-welcome').innerText = t.welcome;
+            document.querySelector('.tr-system').innerText = t.system;
+            document.querySelector('.tr-rev').innerText = t.rev;
+            document.querySelector('.tr-ord').innerText = t.ord;
+            document.querySelector('.tr-tab-ord').innerHTML = `<i class="fa-solid fa-layer-group mr-2"></i>` + t.tabOrd;
+            document.querySelector('.tr-tab-fleet').innerHTML = `<i class="fa-solid fa-truck-fast mr-2"></i>` + t.tabFleet;
+            document.querySelector('.tr-tab-menu').innerHTML = `<i class="fa-solid fa-tags mr-2"></i>` + t.tabMenu;
+            document.querySelector('.tr-tab-guide').innerHTML = `<i class="fa-solid fa-circle-info mr-2"></i>` + t.tabGuide;
+            document.querySelector('.tr-hire').innerText = t.hire;
+            document.querySelector('.tr-ph-name').placeholder = t.phName;
+            document.querySelector('.tr-ph-phone').placeholder = t.phPhone;
+            document.querySelector('.tr-photo').innerText = t.photo;
+            document.querySelector('.tr-add-fleet').innerText = t.addFleet;
+            document.querySelector('.tr-active').innerText = t.active;
+            document.querySelector('.tr-prices').innerText = t.prices;
+            document.querySelector('.tr-features').innerText = t.features;
+            document.querySelector('.tr-save-settings').innerText = t.saveSettings;
+            document.querySelector('.tr-academy').innerText = t.academy;
+            document.querySelector('.tr-save-academy').innerText = t.saveAcademy;
+            document.querySelector('.tr-guide-title').innerText = t.guideTitle;
+        };
+    </script>
+</body>
+</html>
